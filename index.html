@@ -24,8 +24,7 @@
             position: relative;
             width: 500px;
             height: 400px;
-            /* Replace this URL with your custom picture link */
-            background-image: url('https://picsum.photos');
+            background-image: url('https://picsum.photos/500/400');
             background-size: cover;
             border: 4px solid #fff;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
@@ -39,7 +38,7 @@
             height: 100%;
             display: grid;
             grid-template-columns: repeat(10, 1fr); /* 10 columns */
-            grid-template-rows: repeat(8, 1fr);    /* 8 rows */
+            grid-template-rows: repeat(8, 1fr);    /* 8 rows = 80 total blocks */
         }
 
         .block {
@@ -66,10 +65,19 @@
             text-decoration: none;
             font-weight: bold;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: background-color 0.2s, opacity 0.2s;
         }
 
         .reveal-btn:hover {
             background-color: #0056b3;
+        }
+
+        /* Disabled state to prevent spamming and fast double-clicks */
+        .reveal-btn.disabled {
+            opacity: 0.6;
+            pointer-events: none; /* Disables mouse clicks */
+            cursor: not-allowed;
+            background-color: #6c757d;
         }
 
         #status-message {
@@ -91,12 +99,19 @@
     
     <p id="status-message">Connecting to database...</p>
 
-    <!-- 1. Load Firebase SDK Modules from CDN -->
+    <!-- Load Firebase v10 JavaScript SDK Modules -->
     <script type="module">
-        import { initializeApp } from "https://gstatic.com";
-        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc } from "https://gstatic.com";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            doc, 
+            onSnapshot, 
+            updateDoc, 
+            setDoc, 
+            arrayUnion 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // ⚠️ PASTE YOUR UNIQUE FIREBASE CONFIGURATION OBJECT HERE:
+        // Your Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyDYvQKj4m0sPwJAH6tO7z7Ze7RYjrmlEJQ",
             authDomain: "rv-mystery-image.firebaseapp.com",
@@ -107,21 +122,21 @@
             measurementId: "G-LKXEPMXWKD"
         };
 
-        // Initialize Firebase and Firestore Database
+        // Initialize Firebase Services
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
-        // Point to a specific document in your database to store the state
         const puzzleRef = doc(db, "games", "mystery-puzzle-1");
 
         const gridContainer = document.getElementById('grid');
         const revealLink = document.getElementById('reveal-link');
         const statusMessage = document.getElementById('status-message');
         
-        const TOTAL_BLOCKS = 80;
+        const TOTAL_BLOCKS = 80; // 10 cols x 8 rows
+        const DAILY_LIMIT = 3;   // Maximum reveals allowed per user per day
         let globallyRevealedBlocks = [];
 
-        // 2. Generate the visual layout grid
+        // 1. Build the visual layout grid dynamically
         for (let i = 0; i < TOTAL_BLOCKS; i++) {
             const block = document.createElement('div');
             block.classList.add('block');
@@ -129,28 +144,25 @@
             gridContainer.appendChild(block);
         }
 
-        // 3. Listen to Real-Time Updates from Firebase
-        // This function runs automatically whenever ANY user updates the cloud data
+        // 2. Real-Time Cloud Synchronization Listener
         onSnapshot(puzzleRef, async (docSnap) => {
             if (!docSnap.exists()) {
-                // Initialize the database document if this is the very first load
                 await setDoc(puzzleRef, { revealed: [] });
                 globallyRevealedBlocks = [];
             } else {
                 globallyRevealedBlocks = docSnap.data().revealed || [];
             }
-            
             syncUI();
         });
 
-        // 4. Synchronize UI boxes with the latest cloud state
+        // 3. Update grid overlays and status messages
         function syncUI() {
             document.querySelectorAll('.block').forEach(block => {
-                const id = parseInt(block.getAttribute('data-id'));
+                const id = parseInt(block.getAttribute('data-id'), 10);
                 if (globallyRevealedBlocks.includes(id)) {
                     block.classList.add('revealed');
                 } else {
-                    block.classList.remove('revealed'); // Handles resets
+                    block.classList.remove('revealed');
                 }
             });
 
@@ -159,15 +171,48 @@
                 statusMessage.innerText = "🎉 The picture is fully revealed for everyone!";
                 revealLink.style.display = 'none';
             } else {
-                statusMessage.innerText = `${remaining} pieces left to uncover globally.`;
+                checkDailyLimitStatus(remaining);
             }
         }
 
-        // 5. Handle user link clicks
+        // Helper: Get local storage key based on current date (YYYY-MM-DD)
+        function getTodayStorageKey() {
+            const today = new Date().toISOString().split('T')[0];
+            return `reveals_${today}`;
+        }
+
+        // Helper: Check daily limit and update button messaging
+        function checkDailyLimitStatus(remainingGlobal) {
+            const storageKey = getTodayStorageKey();
+            const todayClicks = parseInt(localStorage.getItem(storageKey) || "0", 10);
+
+            if (todayClicks >= DAILY_LIMIT) {
+                statusMessage.innerText = `⚠️ You've reached your ${DAILY_LIMIT} reveals for today! (${remainingGlobal} total pieces left globally).`;
+                revealLink.classList.add('disabled');
+                revealLink.innerText = "Daily Limit Reached";
+            } else {
+                const leftToday = DAILY_LIMIT - todayClicks;
+                statusMessage.innerText = `${remainingGlobal} pieces left globally. You have ${leftToday} reveal(s) left today.`;
+            }
+        }
+
+        // 4. Click Handler with Atomic Writes, Locking & Daily Limit
         revealLink.addEventListener('click', async function(event) {
             event.preventDefault();
             
-            // Calculate which blocks are still hidden locally
+            // Prevent click if locked/disabled
+            if (revealLink.classList.contains('disabled')) return;
+
+            const storageKey = getTodayStorageKey();
+            let todayClicks = parseInt(localStorage.getItem(storageKey) || "0", 10);
+
+            // Double check daily threshold
+            if (todayClicks >= DAILY_LIMIT) {
+                statusMessage.innerText = "⚠️ You've reached your daily reveal limit. Come back tomorrow!";
+                return;
+            }
+
+            // Find all blocks currently hidden locally
             const hiddenIndices = [];
             for (let i = 0; i < TOTAL_BLOCKS; i++) {
                 if (!globallyRevealedBlocks.includes(i)) {
@@ -176,19 +221,37 @@
             }
 
             if (hiddenIndices.length > 0) {
-                // Select a random hidden index
+                // Select a random hidden block ID
                 const randomIndex = Math.floor(Math.random() * hiddenIndices.length);
                 const blockToReveal = hiddenIndices[randomIndex];
                 
-                // Add it to our array copy and push the updated list back to the cloud
-                globallyRevealedBlocks.push(blockToReveal);
+                // Temporarily disable button while writing to Firestore
+                revealLink.classList.add('disabled');
+                const originalText = revealLink.innerText;
+                revealLink.innerText = "Revealing...";
+
                 try {
+                    // Atomic append using arrayUnion to handle simultaneous multi-user clicks
                     await updateDoc(puzzleRef, {
-                        revealed: globallyRevealedBlocks
+                        revealed: arrayUnion(blockToReveal)
                     });
+
+                    // Save incremented count to local storage on successful write
+                    todayClicks++;
+                    localStorage.setItem(storageKey, todayClicks);
+
                 } catch (error) {
                     console.error("Error saving data to cloud:", error);
                     statusMessage.innerText = "Error syncing click with the cloud database.";
+                } finally {
+                    // Re-enable button if limit hasn't been reached
+                    if (todayClicks < DAILY_LIMIT) {
+                        revealLink.classList.remove('disabled');
+                        revealLink.innerText = originalText;
+                    } else {
+                        revealLink.classList.add('disabled');
+                        revealLink.innerText = "Daily Limit Reached";
+                    }
                 }
             }
         });
