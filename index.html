@@ -1,14 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Mystery Image Reveal (Firebase)</title>
-    <!-- Canvas Confetti CDN -->
+    <title>全球神秘圖片揭曉 (Firebase)</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -20,16 +19,13 @@
             box-sizing: border-box;
         }
 
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
+        h1 { color: #333; margin-bottom: 10px; }
 
         .image-container {
             position: relative;
             width: 500px;
             height: 400px;
-            background-image: url('https://picsum.photos/500/400');
+            background-image: url('https://cms-imgp.jw-cdn.org/img/p/1102021260/univ/art/1102021260_univ_cnt_05_lg.jpg');
             background-size: cover;
             border: 4px solid #fff;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
@@ -42,8 +38,8 @@
             width: 100%;
             height: 100%;
             display: grid;
-            grid-template-columns: repeat(10, 1fr); /* 10 columns */
-            grid-template-rows: repeat(8, 1fr);    /* 8 rows = 80 total blocks */
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(8, 1fr);
         }
 
         .block {
@@ -73,9 +69,7 @@
             transition: background-color 0.2s, opacity 0.2s;
         }
 
-        .reveal-btn:hover {
-            background-color: #0056b3;
-        }
+        .reveal-btn:hover { background-color: #0056b3; }
 
         .reveal-btn.disabled {
             opacity: 0.6;
@@ -91,7 +85,6 @@
             text-align: center;
         }
 
-        /* Subtle Hidden Admin Reset Control */
         .admin-reset-btn {
             margin-top: 30px;
             font-size: 12px;
@@ -101,27 +94,23 @@
             transition: color 0.2s;
         }
 
-        .admin-reset-btn:hover {
-            color: #e74c3c;
-        }
+        .admin-reset-btn:hover { color: #e74c3c; }
     </style>
 </head>
 <body>
 
-    <h1>🔍 Global Mystery Picture Reveal</h1>
+    <h1>🔍 全球神秘圖片大揭曉</h1>
     
     <div class="image-container">
         <div class="overlay-grid" id="grid"></div>
     </div>
 
-    <a href="#" class="reveal-btn" id="reveal-link">Click to Reveal 1 Piece for Everyone!</a>
+    <a href="#" class="reveal-btn" id="reveal-link">點擊為大家揭曉 1 塊拼圖！</a>
     
-    <p id="status-message">Connecting to database...</p>
+    <p id="status-message">正在連線至資料庫...</p>
 
-    <!-- Discreet Admin Reset Link -->
-    <a href="#" class="admin-reset-btn" id="reset-link">⚙️ Reset Puzzle State</a>
+    <a href="#" class="admin-reset-btn" id="reset-link">⚙️ 重置拼圖狀態</a>
 
-    <!-- Load Firebase v10 JavaScript SDK Modules -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { 
@@ -133,7 +122,6 @@
             arrayUnion 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyDYvQKj4m0sPwJAH6tO7z7Ze7RYjrmlEJQ",
             authDomain: "rv-mystery-image.firebaseapp.com",
@@ -161,48 +149,22 @@
         let victoryTriggered = false;
 
         // -------------------------------------------------------------
-        // Web Audio Synthesizer Sounds
+        // 自訂 MP3 音效設定 (請將檔名替換為您的 MP3 檔案路徑)
         // -------------------------------------------------------------
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const popSound = new Audio('pop.mp3');         // 點擊揭曉音效
+        const victorySound = new Audio('https://cfp2.jw-cdn.org/a/321f47/1/o/osg_CH_082.mp3'); // 完成揭曉音效
+
+        popSound.volume = 0.5;
+        victorySound.volume = 0.7;
 
         function playPopSound() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
-            
-            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-            
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.08);
+            popSound.currentTime = 0;
+            popSound.play().catch(e => console.log("Audio play blocked:", e));
         }
 
         function playVictoryJingle() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
-            
-            notes.forEach((freq, index) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                const startTime = audioCtx.currentTime + (index * 0.12);
-                
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(freq, startTime);
-                
-                gain.gain.setValueAtTime(0.3, startTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
-                
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start(startTime);
-                osc.stop(startTime + 0.3);
-            });
+            victorySound.currentTime = 0;
+            victorySound.play().catch(e => console.log("Audio play blocked:", e));
         }
 
         function triggerConfetti() {
@@ -228,7 +190,7 @@
         }
 
         // -------------------------------------------------------------
-        // UI & Grid Generation
+        // UI 與網格動態生成
         // -------------------------------------------------------------
         for (let i = 0; i < TOTAL_BLOCKS; i++) {
             const block = document.createElement('div');
@@ -250,7 +212,6 @@
         function syncUI() {
             const currentCount = globallyRevealedBlocks.length;
 
-            // Play pop sound when new blocks are uncovered
             if (currentCount > previousRevealedCount && previousRevealedCount !== 0) {
                 playPopSound();
             }
@@ -266,9 +227,8 @@
 
             const remaining = TOTAL_BLOCKS - currentCount;
 
-            // Completion check
             if (remaining === 0) {
-                statusMessage.innerText = "🎉 The picture is fully revealed for everyone!";
+                statusMessage.innerText = "🎉 恭喜！完整的圖片已經為大家揭曉囉！";
                 revealLink.style.display = 'none';
 
                 if (!victoryTriggered) {
@@ -278,7 +238,7 @@
                 }
             } else {
                 revealLink.style.display = 'inline-block';
-                victoryTriggered = false; // Reset flag if board was reset
+                victoryTriggered = false;
                 checkDailyLimitStatus(remaining);
             }
 
@@ -295,17 +255,17 @@
             const todayClicks = parseInt(localStorage.getItem(storageKey) || "0", 10);
 
             if (todayClicks >= DAILY_LIMIT) {
-                statusMessage.innerText = `⚠️ You've reached your ${DAILY_LIMIT} reveals for today! (${remainingGlobal} total pieces left globally).`;
+                statusMessage.innerText = `⚠️ 您今天的 ${DAILY_LIMIT} 次揭曉額度已用完！（全球還剩 ${remainingGlobal} 塊未揭曉）。`;
                 revealLink.classList.add('disabled');
-                revealLink.innerText = "Daily Limit Reached";
+                revealLink.innerText = "已達今日點擊上限";
             } else {
                 const leftToday = DAILY_LIMIT - todayClicks;
-                statusMessage.innerText = `${remainingGlobal} pieces left globally. You have ${leftToday} reveal(s) left today.`;
+                statusMessage.innerText = `全球剩餘 ${remainingGlobal} 塊拼圖。您今天還有 ${leftToday} 次點擊機會。`;
             }
         }
 
         // -------------------------------------------------------------
-        // Event Listeners
+        // 事件監聽器
         // -------------------------------------------------------------
         revealLink.addEventListener('click', async function(event) {
             event.preventDefault();
@@ -327,7 +287,7 @@
                 
                 revealLink.classList.add('disabled');
                 const originalText = revealLink.innerText;
-                revealLink.innerText = "Revealing...";
+                revealLink.innerText = "揭曉中...";
 
                 try {
                     await updateDoc(puzzleRef, {
@@ -338,36 +298,31 @@
                     localStorage.setItem(storageKey, todayClicks);
 
                 } catch (error) {
-                    console.error("Error saving data to cloud:", error);
-                    statusMessage.innerText = "Error syncing click with database.";
+                    console.error("寫入資料時發生錯誤：", error);
+                    statusMessage.innerText = "同步至雲端資料庫時發生錯誤。";
                 } finally {
                     if (todayClicks < DAILY_LIMIT) {
                         revealLink.classList.remove('disabled');
                         revealLink.innerText = originalText;
                     } else {
                         revealLink.classList.add('disabled');
-                        revealLink.innerText = "Daily Limit Reached";
+                        revealLink.innerText = "已達今日點擊上限";
                     }
                 }
             }
         });
 
-        // Hidden Reset Button Event Handler
         resetLink.addEventListener('click', async function(event) {
             event.preventDefault();
-            if (confirm("Are you sure you want to reset the puzzle for everyone?")) {
+            if (confirm("您確定要為所有人重置拼圖嗎？")) {
                 try {
-                    // 1. Reset Firestore array
                     await setDoc(puzzleRef, { revealed: [] });
-                    
-                    // 2. Reset local daily click quota
                     const storageKey = getTodayStorageKey();
                     localStorage.setItem(storageKey, 0);
-
-                    statusMessage.innerText = "Puzzle state successfully reset!";
+                    statusMessage.innerText = "拼圖狀態已成功重置！";
                 } catch (error) {
-                    console.error("Reset error:", error);
-                    statusMessage.innerText = "Error resetting puzzle state.";
+                    console.error("重置錯誤：", error);
+                    statusMessage.innerText = "重置拼圖狀態時發生錯誤。";
                 }
             }
         });
