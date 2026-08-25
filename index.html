@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Mystery Image Reveal (Firebase)</title>
+    <!-- Canvas Confetti CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -14,10 +16,13 @@
             min-height: 100vh;
             background-color: #f0f2f5;
             margin: 0;
+            padding: 20px 0;
+            box-sizing: border-box;
         }
 
         h1 {
             color: #333;
+            margin-bottom: 10px;
         }
 
         .image-container {
@@ -72,10 +77,9 @@
             background-color: #0056b3;
         }
 
-        /* Disabled state to prevent spamming and fast double-clicks */
         .reveal-btn.disabled {
             opacity: 0.6;
-            pointer-events: none; /* Disables mouse clicks */
+            pointer-events: none;
             cursor: not-allowed;
             background-color: #6c757d;
         }
@@ -84,6 +88,21 @@
             margin-top: 15px;
             font-weight: bold;
             color: #27ae60;
+            text-align: center;
+        }
+
+        /* Subtle Hidden Admin Reset Control */
+        .admin-reset-btn {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #aaa;
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .admin-reset-btn:hover {
+            color: #e74c3c;
         }
     </style>
 </head>
@@ -99,6 +118,9 @@
     
     <p id="status-message">Connecting to database...</p>
 
+    <!-- Discreet Admin Reset Link -->
+    <a href="#" class="admin-reset-btn" id="reset-link">⚙️ Reset Puzzle State</a>
+
     <!-- Load Firebase v10 JavaScript SDK Modules -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -111,7 +133,7 @@
             arrayUnion 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Your Firebase Configuration
+        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyDYvQKj4m0sPwJAH6tO7z7Ze7RYjrmlEJQ",
             authDomain: "rv-mystery-image.firebaseapp.com",
@@ -122,7 +144,6 @@
             measurementId: "G-LKXEPMXWKD"
         };
 
-        // Initialize Firebase Services
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
@@ -130,13 +151,85 @@
 
         const gridContainer = document.getElementById('grid');
         const revealLink = document.getElementById('reveal-link');
+        const resetLink = document.getElementById('reset-link');
         const statusMessage = document.getElementById('status-message');
         
-        const TOTAL_BLOCKS = 80; // 10 cols x 8 rows
-        const DAILY_LIMIT = 3;   // Maximum reveals allowed per user per day
+        const TOTAL_BLOCKS = 80;
+        const DAILY_LIMIT = 3;
         let globallyRevealedBlocks = [];
+        let previousRevealedCount = 0;
+        let victoryTriggered = false;
 
-        // 1. Build the visual layout grid dynamically
+        // -------------------------------------------------------------
+        // Web Audio Synthesizer Sounds
+        // -------------------------------------------------------------
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playPopSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+            
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.08);
+        }
+
+        function playVictoryJingle() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+            
+            notes.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const startTime = audioCtx.currentTime + (index * 0.12);
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, startTime);
+                
+                gain.gain.setValueAtTime(0.3, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + 0.3);
+            });
+        }
+
+        function triggerConfetti() {
+            if (typeof confetti === 'function') {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+                
+                const duration = 3 * 1000;
+                const animationEnd = Date.now() + duration;
+
+                const interval = setInterval(function() {
+                    const timeLeft = animationEnd - Date.now();
+                    if (timeLeft <= 0) return clearInterval(interval);
+
+                    confetti({
+                        particleCount: 20,
+                        startVelocity: 30,
+                        spread: 360,
+                        ticks: 60,
+                        origin: { x: Math.random(), y: Math.random() - 0.2 }
+                    });
+                }, 250);
+            }
+        }
+
+        // -------------------------------------------------------------
+        // UI & Grid Generation
+        // -------------------------------------------------------------
         for (let i = 0; i < TOTAL_BLOCKS; i++) {
             const block = document.createElement('div');
             block.classList.add('block');
@@ -144,7 +237,6 @@
             gridContainer.appendChild(block);
         }
 
-        // 2. Real-Time Cloud Synchronization Listener
         onSnapshot(puzzleRef, async (docSnap) => {
             if (!docSnap.exists()) {
                 await setDoc(puzzleRef, { revealed: [] });
@@ -155,8 +247,14 @@
             syncUI();
         });
 
-        // 3. Update grid overlays and status messages
         function syncUI() {
+            const currentCount = globallyRevealedBlocks.length;
+
+            // Play pop sound when new blocks are uncovered
+            if (currentCount > previousRevealedCount && previousRevealedCount !== 0) {
+                playPopSound();
+            }
+
             document.querySelectorAll('.block').forEach(block => {
                 const id = parseInt(block.getAttribute('data-id'), 10);
                 if (globallyRevealedBlocks.includes(id)) {
@@ -166,22 +264,32 @@
                 }
             });
 
-            const remaining = TOTAL_BLOCKS - globallyRevealedBlocks.length;
+            const remaining = TOTAL_BLOCKS - currentCount;
+
+            // Completion check
             if (remaining === 0) {
                 statusMessage.innerText = "🎉 The picture is fully revealed for everyone!";
                 revealLink.style.display = 'none';
+
+                if (!victoryTriggered) {
+                    victoryTriggered = true;
+                    playVictoryJingle();
+                    triggerConfetti();
+                }
             } else {
+                revealLink.style.display = 'inline-block';
+                victoryTriggered = false; // Reset flag if board was reset
                 checkDailyLimitStatus(remaining);
             }
+
+            previousRevealedCount = currentCount;
         }
 
-        // Helper: Get local storage key based on current date (YYYY-MM-DD)
         function getTodayStorageKey() {
             const today = new Date().toISOString().split('T')[0];
             return `reveals_${today}`;
         }
 
-        // Helper: Check daily limit and update button messaging
         function checkDailyLimitStatus(remainingGlobal) {
             const storageKey = getTodayStorageKey();
             const todayClicks = parseInt(localStorage.getItem(storageKey) || "0", 10);
@@ -196,55 +304,43 @@
             }
         }
 
-        // 4. Click Handler with Atomic Writes, Locking & Daily Limit
+        // -------------------------------------------------------------
+        // Event Listeners
+        // -------------------------------------------------------------
         revealLink.addEventListener('click', async function(event) {
             event.preventDefault();
-            
-            // Prevent click if locked/disabled
             if (revealLink.classList.contains('disabled')) return;
 
             const storageKey = getTodayStorageKey();
             let todayClicks = parseInt(localStorage.getItem(storageKey) || "0", 10);
 
-            // Double check daily threshold
-            if (todayClicks >= DAILY_LIMIT) {
-                statusMessage.innerText = "⚠️ You've reached your daily reveal limit. Come back tomorrow!";
-                return;
-            }
+            if (todayClicks >= DAILY_LIMIT) return;
 
-            // Find all blocks currently hidden locally
             const hiddenIndices = [];
             for (let i = 0; i < TOTAL_BLOCKS; i++) {
-                if (!globallyRevealedBlocks.includes(i)) {
-                    hiddenIndices.push(i);
-                }
+                if (!globallyRevealedBlocks.includes(i)) hiddenIndices.push(i);
             }
 
             if (hiddenIndices.length > 0) {
-                // Select a random hidden block ID
                 const randomIndex = Math.floor(Math.random() * hiddenIndices.length);
                 const blockToReveal = hiddenIndices[randomIndex];
                 
-                // Temporarily disable button while writing to Firestore
                 revealLink.classList.add('disabled');
                 const originalText = revealLink.innerText;
                 revealLink.innerText = "Revealing...";
 
                 try {
-                    // Atomic append using arrayUnion to handle simultaneous multi-user clicks
                     await updateDoc(puzzleRef, {
                         revealed: arrayUnion(blockToReveal)
                     });
 
-                    // Save incremented count to local storage on successful write
                     todayClicks++;
                     localStorage.setItem(storageKey, todayClicks);
 
                 } catch (error) {
                     console.error("Error saving data to cloud:", error);
-                    statusMessage.innerText = "Error syncing click with the cloud database.";
+                    statusMessage.innerText = "Error syncing click with database.";
                 } finally {
-                    // Re-enable button if limit hasn't been reached
                     if (todayClicks < DAILY_LIMIT) {
                         revealLink.classList.remove('disabled');
                         revealLink.innerText = originalText;
@@ -252,6 +348,26 @@
                         revealLink.classList.add('disabled');
                         revealLink.innerText = "Daily Limit Reached";
                     }
+                }
+            }
+        });
+
+        // Hidden Reset Button Event Handler
+        resetLink.addEventListener('click', async function(event) {
+            event.preventDefault();
+            if (confirm("Are you sure you want to reset the puzzle for everyone?")) {
+                try {
+                    // 1. Reset Firestore array
+                    await setDoc(puzzleRef, { revealed: [] });
+                    
+                    // 2. Reset local daily click quota
+                    const storageKey = getTodayStorageKey();
+                    localStorage.setItem(storageKey, 0);
+
+                    statusMessage.innerText = "Puzzle state successfully reset!";
+                } catch (error) {
+                    console.error("Reset error:", error);
+                    statusMessage.innerText = "Error resetting puzzle state.";
                 }
             }
         });
