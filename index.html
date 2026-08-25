@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mystery Image Reveal</title>
+    <title>Global Mystery Image Reveal (Firebase)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -20,10 +20,9 @@
             color: #333;
         }
 
-        /* Container holds the image and the grid */
         .image-container {
             position: relative;
-            width: 400px;
+            width: 500px;
             height: 400px;
             /* Replace this URL with your custom picture link */
             background-image: url('https://picsum.photos');
@@ -32,8 +31,169 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
         }
 
-        /* Grid covers the background image completely */
         .overlay-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(10, 1fr); /* 10 columns */
+            grid-template-rows: repeat(8, 1fr);    /* 8 rows */
+        }
+
+        .block {
+            background-color: #2c3e50;
+            border: 0.5px solid #34495e;
+            transition: opacity 0.5s ease;
+            opacity: 1;
+        }
+
+        .block.revealed {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .reveal-btn {
+            margin-top: 20px;
+            padding: 12px 24px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .reveal-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #status-message {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🔍 Global Mystery Picture Reveal</h1>
+    
+    <div class="image-container">
+        <div class="overlay-grid" id="grid"></div>
+    </div>
+
+    <a href="#" class="reveal-btn" id="reveal-link">Click to Reveal 1 Piece for Everyone!</a>
+    
+    <p id="status-message">Connecting to database...</p>
+
+    <!-- 1. Load Firebase SDK Modules from CDN -->
+    <script type="module">
+        import { initializeApp } from "https://gstatic.com";
+        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc } from "https://gstatic.com";
+
+        // ⚠️ PASTE YOUR UNIQUE FIREBASE CONFIGURATION OBJECT HERE:
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_://firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_://appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase and Firestore Database
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // Point to a specific document in your database to store the state
+        const puzzleRef = doc(db, "games", "mystery-puzzle-1");
+
+        const gridContainer = document.getElementById('grid');
+        const revealLink = document.getElementById('reveal-link');
+        const statusMessage = document.getElementById('status-message');
+        
+        const TOTAL_BLOCKS = 74;
+        let globallyRevealedBlocks = [];
+
+        // 2. Generate the visual layout grid
+        for (let i = 0; i < TOTAL_BLOCKS; i++) {
+            const block = document.createElement('div');
+            block.classList.add('block');
+            block.setAttribute('data-id', i);
+            gridContainer.appendChild(block);
+        }
+
+        // 3. Listen to Real-Time Updates from Firebase
+        // This function runs automatically whenever ANY user updates the cloud data
+        onSnapshot(puzzleRef, async (docSnap) => {
+            if (!docSnap.exists()) {
+                // Initialize the database document if this is the very first load
+                await setDoc(puzzleRef, { revealed: [] });
+                globallyRevealedBlocks = [];
+            } else {
+                globallyRevealedBlocks = docSnap.data().revealed || [];
+            }
+            
+            syncUI();
+        });
+
+        // 4. Synchronize UI boxes with the latest cloud state
+        function syncUI() {
+            document.querySelectorAll('.block').forEach(block => {
+                const id = parseInt(block.getAttribute('data-id'));
+                if (globallyRevealedBlocks.includes(id)) {
+                    block.classList.add('revealed');
+                } else {
+                    block.classList.remove('revealed'); // Handles resets
+                }
+            });
+
+            const remaining = TOTAL_BLOCKS - globallyRevealedBlocks.length;
+            if (remaining === 0) {
+                statusMessage.innerText = "🎉 The picture is fully revealed for everyone!";
+                revealLink.style.display = 'none';
+            } else {
+                statusMessage.innerText = `${remaining} pieces left to uncover globally.`;
+            }
+        }
+
+        // 5. Handle user link clicks
+        revealLink.addEventListener('click', async function(event) {
+            event.preventDefault();
+            
+            // Calculate which blocks are still hidden locally
+            const hiddenIndices = [];
+            for (let i = 0; i < TOTAL_BLOCKS; i++) {
+                if (!globallyRevealedBlocks.includes(i)) {
+                    hiddenIndices.push(i);
+                }
+            }
+
+            if (hiddenIndices.length > 0) {
+                // Select a random hidden index
+                const randomIndex = Math.floor(Math.random() * hiddenIndices.length);
+                const blockToReveal = hiddenIndices[randomIndex];
+                
+                // Add it to our array copy and push the updated list back to the cloud
+                globallyRevealedBlocks.push(blockToReveal);
+                try {
+                    await updateDoc(puzzleRef, {
+                        revealed: globallyRevealedBlocks
+                    });
+                } catch (error) {
+                    console.error("Error saving data to cloud:", error);
+                    statusMessage.innerText = "Error syncing click with the cloud database.";
+                }
+            }
+        });
+    </script>
+</body>
+</html>
             position: absolute;
             top: 0;
             left: 0;
