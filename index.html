@@ -105,11 +105,11 @@
         <div class="overlay-grid" id="grid"></div>
     </div>
 
-    <a href="#" class="reveal-btn" id="reveal-link">點擊為大家揭曉 1 塊拼圖！</a>
+    <a href="#" class="reveal-btn" id="reveal-link">做 1 個續訪點擊為大家揭曉 1 塊拼圖！</a>
     
     <p id="status-message">正在連線至資料庫...</p>
 
-    <a href="#" class="admin-reset-btn" id="reset-link">⚙️ 重置拼圖狀態</a>
+   // <a href="#" class="admin-reset-btn" id="reset-link">⚙️ 重置拼圖狀態</a>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -257,7 +257,7 @@
             if (todayClicks >= DAILY_LIMIT) {
                 statusMessage.innerText = `⚠️ 您今天的 ${DAILY_LIMIT} 次揭曉額度已用完！（全球還剩 ${remainingGlobal} 塊未揭曉）。`;
                 revealLink.classList.add('disabled');
-                revealLink.innerText = "已達今日點擊上限";
+                revealLink.innerText = "已達今日點擊上限，如果你今天做過3個多續訪，請明天再按";
             } else {
                 const leftToday = DAILY_LIMIT - todayClicks;
                 statusMessage.innerText = `全球剩餘 ${remainingGlobal} 塊拼圖。您今天還有 ${leftToday} 次點擊機會。`;
